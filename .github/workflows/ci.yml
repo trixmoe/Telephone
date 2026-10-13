@@ -1,0 +1,149 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test ${{ matrix.scheme }}
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        scheme:
+          - Domain
+          - UseCases
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Test ${{ matrix.scheme }}
+        run: |
+          xcodebuild test \
+            -project Telephone.xcodeproj \
+            -scheme "${{ matrix.scheme }}" \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO
+
+  build-app:
+    name: Build app
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      ARCH: arm64
+      OPUS_VERSION: "1.3.1"
+      LIBRESSL_VERSION: "3.1.5"
+      PJSIP_VERSION: "2.10"
+      MACOSX_DEPLOYMENT_TARGET: "15.6"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Cache third-party libraries
+        id: cache-thirdparty
+        uses: actions/cache@v6
+        with:
+          path: |
+            ThirdParty/Opus
+            ThirdParty/LibreSSL
+            ThirdParty/PJSIP
+          key: thirdparty-${{ runner.os }}-opus${{ env.OPUS_VERSION }}-libressl${{ env.LIBRESSL_VERSION }}-pjsip${{ env.PJSIP_VERSION }}-${{ hashFiles('ThirdParty/PJSIP/patches/**') }}
+
+      - name: Build Opus
+        if: steps.cache-thirdparty.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          curl -fL -o "opus-$OPUS_VERSION.tar.gz" "https://archive.mozilla.org/pub/opus/opus-$OPUS_VERSION.tar.gz"
+          tar xzf "opus-$OPUS_VERSION.tar.gz"
+          cd "opus-$OPUS_VERSION"
+          ./configure \
+            --prefix="$GITHUB_WORKSPACE/ThirdParty/Opus" \
+            --disable-shared \
+            CFLAGS="-arch $ARCH -Os -mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET"
+          make -j"$(sysctl -n hw.ncpu)"
+          make install
+
+      - name: Build LibreSSL
+        if: steps.cache-thirdparty.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          curl -fL -o "libressl-$LIBRESSL_VERSION.tar.gz" "https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-$LIBRESSL_VERSION.tar.gz"
+          tar xzf "libressl-$LIBRESSL_VERSION.tar.gz"
+          cd "libressl-$LIBRESSL_VERSION"
+          ./configure \
+            --prefix="$GITHUB_WORKSPACE/ThirdParty/LibreSSL" \
+            --disable-shared \
+            CFLAGS="-arch $ARCH -Os -mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET"
+          make -j"$(sysctl -n hw.ncpu)"
+          make install
+
+      - name: Build PJSIP
+        if: steps.cache-thirdparty.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          curl -fL -o "pjproject-$PJSIP_VERSION.tar.gz" "https://codeload.github.com/pjsip/pjproject/tar.gz/$PJSIP_VERSION"
+          tar xzf "pjproject-$PJSIP_VERSION.tar.gz"
+          cd "pjproject-$PJSIP_VERSION"
+          printf '%s\n' \
+            '#define PJSIP_DONT_SWITCH_TO_TCP 1' \
+            '#define PJSUA_MAX_ACC 32' \
+            '#define PJMEDIA_RTP_PT_TELEPHONE_EVENTS 101' \
+            '#define PJ_DNS_MAX_IP_IN_A_REC 32' \
+            '#define PJ_DNS_SRV_MAX_ADDR 32' \
+            '#define PJSIP_MAX_RESOLVED_ADDRESSES 32' \
+            '#define PJ_HAS_IPV6 1' \
+            > pjlib/include/pj/config_site.h
+          patch --batch -p0 -i "$GITHUB_WORKSPACE/ThirdParty/PJSIP/patches/sock_qos_darwin.patch"
+          patch --batch -p0 -i "$GITHUB_WORKSPACE/ThirdParty/PJSIP/patches/os_core_unix.patch"
+          patch --batch -p0 -i "$GITHUB_WORKSPACE/ThirdParty/PJSIP/patches/coreaudio_dev.patch"
+          ./configure \
+            --prefix="$GITHUB_WORKSPACE/ThirdParty/PJSIP" \
+            --with-opus="$GITHUB_WORKSPACE/ThirdParty/Opus" \
+            --with-ssl="$GITHUB_WORKSPACE/ThirdParty/LibreSSL" \
+            --disable-video --disable-libyuv --disable-libwebrtc \
+            --host=arm-apple-darwin \
+            CFLAGS="-arch $ARCH -Os -DNDEBUG -mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET" \
+            CXXFLAGS="-arch $ARCH -Os -DNDEBUG -mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET"
+          make lib -j"$(sysctl -n hw.ncpu)"
+          make install
+
+      - name: Build Telephone.app
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project Telephone.xcodeproj \
+            -target Telephone \
+            -configuration Release \
+            -sdk macosx \
+            ARCHS="$ARCH" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            SYMROOT="$GITHUB_WORKSPACE/build"
+          test -d "$GITHUB_WORKSPACE/build/Release/Telephone.app"
+
+      - name: Stage app bundle
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          ditto "$GITHUB_WORKSPACE/build/Release/Telephone.app" "$GITHUB_WORKSPACE/dist/Telephone.app"
+          test -d "$GITHUB_WORKSPACE/dist/Telephone.app"
+
+      - name: Upload app bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: Telephone.app
+          path: dist
+          if-no-files-found: error
