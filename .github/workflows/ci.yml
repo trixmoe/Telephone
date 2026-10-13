@@ -25,6 +25,18 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
+      - name: Normalize project format for the runner's Xcode
+        run: |
+          set -euo pipefail
+          if ! xcodebuild -list -project Telephone.xcodeproj >/dev/null 2>&1; then
+            echo "Project format is newer than $(xcodebuild -version | head -n1). Downgrading object version for CI."
+            sed -i '' \
+              -e 's/objectVersion = 110;/objectVersion = 77;/' \
+              -e 's/preferredProjectObjectVersion = 110;/preferredProjectObjectVersion = 77;/' \
+              Telephone.xcodeproj/project.pbxproj
+          fi
+          xcodebuild -list -project Telephone.xcodeproj >/dev/null
+
       - name: Test ${{ matrix.scheme }}
         run: |
           xcodebuild test \
@@ -49,6 +61,18 @@ jobs:
 
       - name: Show Xcode version
         run: xcodebuild -version
+
+      - name: Normalize project format for the runner's Xcode
+        run: |
+          set -euo pipefail
+          if ! xcodebuild -list -project Telephone.xcodeproj >/dev/null 2>&1; then
+            echo "Project format is newer than $(xcodebuild -version | head -n1). Downgrading object version for CI."
+            sed -i '' \
+              -e 's/objectVersion = 110;/objectVersion = 77;/' \
+              -e 's/preferredProjectObjectVersion = 110;/preferredProjectObjectVersion = 77;/' \
+              Telephone.xcodeproj/project.pbxproj
+          fi
+          xcodebuild -list -project Telephone.xcodeproj >/dev/null
 
       - name: Cache third-party libraries
         id: cache-thirdparty
