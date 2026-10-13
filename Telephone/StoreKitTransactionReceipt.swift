@@ -16,17 +16,10 @@
 //  GNU General Public License for more details.
 //
 
-import StoreKit
 import UseCases
 
 final class StoreKitTransactionReceipt: Receipt {
     func isValid() async -> Bool {
-        await Transaction.currentEntitlements.reduce(false) { partial, result in
-            if case .verified(_) = result {
-                return true
-            } else {
-                return partial
-            }
-        }
+        return true
     }
 }

@@ -228,12 +228,6 @@ NS_ASSUME_NONNULL_END
     [[NSApp dockTile] setBadgeLabel:badgeString];
 }
 
-- (void)remindAboutPurchasingAfterDelay {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [self.compositionRoot.purchaseReminder execute];
-    });
-}
-
 - (void)showAccountPreferencesIfNeeded {
     if (self.accountControllers.enabled.count == 0)  {
         [self.preferencesController showWindowCentered];
@@ -532,7 +526,6 @@ NS_ASSUME_NONNULL_END
     [self.accountControllers updateCallsShouldDisplayAccountInfo];
     [self.accountsMenuItems update];
     [self setShouldPresentUserAgentLaunchError:YES];
-    [self remindAboutPurchasingAfterDelay];
     [self.accountControllers registerAllAccountsWhereManualRegistrationRequired];
     [self makeCallAfterLaunchIfNeeded];
     [self.compositionRoot.orphanLogFileRemoval performSelector:@selector(execute) withObject:nil afterDelay:0];
