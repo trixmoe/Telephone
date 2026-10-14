@@ -33,14 +33,17 @@ final class AccountViewBottomViewPresenter: NSObject {
     }
 
     @objc func hideWithoutAnimation() {
+        button.isHidden = true
         constraint.constant = 0
     }
 
     private func show() {
+        button.isHidden = false
         constraint.animator().constant = height
     }
 
     private func hide() {
+        button.isHidden = true
         constraint.animator().constant = 0
     }
 }
@@ -54,12 +57,10 @@ extension AccountViewBottomViewPresenter: RecordCountingPurchaseCheckUseCaseOutp
 
     nonisolated func didFailCheckingPurchase(recordCount count: Int) {
         Task { @MainActor in
-            if count > controller.recordCount {
-                button.title = makeButtionTitleWithCounts(total: count, current: controller.recordCount)
-                show()
-            } else {
-                hide()
-            }
+            button.title = count > controller.recordCount
+                ? makeButtionTitleWithCounts(total: count, current: controller.recordCount)
+                : NSLocalizedString("Show More…", comment: "Show more call history records button.")
+            show()
         }
     }
 }
