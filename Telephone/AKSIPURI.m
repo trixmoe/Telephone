@@ -82,6 +82,27 @@
 
 
 #pragma mark -
+#pragma mark NSObject
+
+- (BOOL)isEqual:(id)object {
+    if (self == object) {
+        return YES;
+    }
+    if (![object isKindOfClass:[AKSIPURI class]]) {
+        return NO;
+    }
+    AKSIPURI *other = object;
+    return self.port == other.port &&
+           [self.user isEqualToString:other.user] &&
+           [self.host isEqualToString:other.host];
+}
+
+- (NSUInteger)hash {
+    return self.user.hash ^ self.host.hash ^ (NSUInteger)self.port;
+}
+
+
+#pragma mark -
 #pragma mark NSCopying protocol
 
 - (id)copyWithZone:(NSZone *)zone {
